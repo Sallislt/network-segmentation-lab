@@ -1,0 +1,117 @@
+! ============================================================
+! SW-ACC2 - access switch: exam room + IP cameras (hardened version)
+! Changes vs. original:
+!  - exam supervisor PC moved to VLAN 10: the design requires it to reach the
+!    NVR and the Internet, which is impossible from the isolated exam VLAN
+!  - management IP in VLAN 99, SSH v2 only
+!  - port security: exactly one device per exam PC port (shutdown on violation),
+!    so an extra laptop plugged into the exam room is blocked immediately
+!  - DHCP snooping (only the uplink is trusted)
+!  - trunk: no DTP negotiation, unused native VLAN; unused uplink shut down
+! Replace every <CHANGE_ME> before use. Not yet re-tested in Packet Tracer.
+! ============================================================
+enable
+configure terminal
+hostname SW-ACC2
+
+! --- Management hardening ---------------------------------------------
+service password-encryption
+enable secret <CHANGE_ME>
+username netadmin privilege 15 secret <CHANGE_ME>
+no ip domain-lookup
+ip domain-name lab.local
+crypto key generate rsa general-keys modulus 2048
+ip ssh version 2
+banner motd ^Authorized access only. Activity is logged.^
+
+ip access-list standard ACL_MGMT
+ permit 192.168.99.0 0.0.0.255
+ deny any log
+
+line con 0
+ login local
+ exec-timeout 10 0
+line vty 0 4
+ login local
+ transport input ssh
+ access-class ACL_MGMT in
+ exec-timeout 10 0
+line vty 5 15
+ transport input none
+
+vlan 10
+ name CUSTOMER_SERVICE
+vlan 20
+ name EXAMS
+vlan 50
+ name CAMERAS
+vlan 99
+ name MANAGEMENT
+vlan 999
+ name PARKING_UNUSED
+
+interface Vlan99
+ ip address 192.168.99.12 255.255.255.0
+ no shutdown
+ip default-gateway 192.168.99.1
+
+! --- DHCP snooping -----------------------------------------------------
+ip dhcp snooping
+ip dhcp snooping vlan 10,20
+no ip dhcp snooping information option
+
+! --- Uplink to SW-CORE -------------------------------------------------
+interface GigabitEthernet0/1
+ description Trunk to SW-CORE
+ switchport mode trunk
+ switchport nonegotiate
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,20,50,99
+ ip dhcp snooping trust
+ no shutdown
+
+interface GigabitEthernet0/2
+ description UNUSED
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+
+! --- Fa0/1-15: exam PCs (VLAN 20) -------------------------------------
+interface range FastEthernet0/1 - 15
+ description Exam PC
+ switchport mode access
+ switchport access vlan 20
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security mac-address sticky
+ switchport port-security violation shutdown
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ ip dhcp snooping limit rate 10
+
+! --- Fa0/16: exam supervisor PC (VLAN 10) ----------------------------
+interface FastEthernet0/16
+ description Exam supervisor PC
+ switchport mode access
+ switchport access vlan 10
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security mac-address sticky
+ switchport port-security violation restrict
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+
+! --- Fa0/17-24: IP cameras (VLAN 50, static addressing) --------------
+interface range FastEthernet0/17 - 24
+ description IP camera
+ switchport mode access
+ switchport access vlan 50
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security mac-address sticky
+ switchport port-security violation restrict
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+
+end
+write memory

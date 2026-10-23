@@ -1,0 +1,34 @@
+! ============================================================
+! SW-ACC1 - access switch: customer service area + VoIP
+! Original course configuration (Packet Tracer), comments translated to English
+! ============================================================
+enable
+configure terminal
+hostname SW-ACC1
+
+vlan 10
+ name CUSTOMER_SERVICE
+vlan 40
+ name VOIP
+
+! Uplink to SW-CORE
+interface GigabitEthernet0/1
+ description Uplink to SW-CORE
+ switchport mode trunk
+ switchport trunk allowed vlan 10,40,99
+ no shutdown
+
+! Fa0/1-12 - customer service PCs (VLAN 10)
+interface range FastEthernet0/1 - 12
+ switchport mode access
+ switchport access vlan 10
+ spanning-tree portfast
+
+! Fa0/13-24 - IP phones (VLAN 40)
+interface range FastEthernet0/13 - 24
+ switchport mode access
+ switchport access vlan 40
+ spanning-tree portfast
+
+end
+write memory

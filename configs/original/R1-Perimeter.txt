@@ -1,0 +1,21 @@
+! ============================================================
+! R1-Perimeter - edge router
+! Original course configuration (Packet Tracer), comments translated to English
+! ============================================================
+enable
+configure terminal
+hostname R1-Perimeter
+
+interface GigabitEthernet0/0
+ description Link to WAN/ISP (simulated)
+ ip address dhcp
+ no shutdown
+
+interface GigabitEthernet0/1
+ description Trunk to SW-CORE
+ no shutdown
+
+! Router-on-a-stick sub-interfaces could be added here, but inter-VLAN routing is done by SW-CORE.
+exit
+end
+write memory

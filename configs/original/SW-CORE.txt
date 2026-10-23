@@ -1,0 +1,99 @@
+! ============================================================
+! SW-CORE - Layer 3 core switch (inter-VLAN routing)
+! Original course configuration (Packet Tracer), comments translated to English
+! ============================================================
+enable
+configure terminal
+hostname SW-CORE
+ip routing
+
+vlan 10
+ name CUSTOMER_SERVICE
+vlan 20
+ name EXAMS
+vlan 30
+ name SERVERS
+vlan 40
+ name VOIP
+vlan 50
+ name CAMERAS
+vlan 99
+ name MANAGEMENT
+
+interface Vlan10
+ ip address 192.168.10.1 255.255.255.0
+ no shutdown
+
+interface Vlan20
+ ip address 192.168.20.1 255.255.255.0
+ ip access-group ACL_EXAMS in
+ no shutdown
+
+interface Vlan30
+ ip address 192.168.30.1 255.255.255.0
+ no shutdown
+
+interface Vlan40
+ ip address 192.168.40.1 255.255.255.0
+ no shutdown
+
+interface Vlan50
+ ip address 192.168.50.1 255.255.255.0
+ no shutdown
+
+interface Vlan99
+ ip address 192.168.99.1 255.255.255.0
+ no shutdown
+
+! Trunk to SW-ACC1
+interface GigabitEthernet0/1
+ description Uplink to SW-ACC1
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30,40,50,99
+ no shutdown
+
+! Trunk to SW-ACC2
+interface GigabitEthernet0/2
+ description Uplink to SW-ACC2
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30,40,50,99
+ no shutdown
+
+! Trunk to R1
+interface GigabitEthernet0/3
+ description Uplink to R1-Perimeter
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30,40,50,99
+ no shutdown
+
+! Servers (access ports, VLAN 30)
+interface FastEthernet0/1
+ description SRV-DC
+ switchport mode access
+ switchport access vlan 30
+ spanning-tree portfast
+interface FastEthernet0/2
+ description SRV-EXAM
+ switchport mode access
+ switchport access vlan 30
+ spanning-tree portfast
+interface FastEthernet0/3
+ description SRV-FILE
+ switchport mode access
+ switchport access vlan 30
+ spanning-tree portfast
+interface FastEthernet0/4
+ description SRV-NVR
+ switchport mode access
+ switchport access vlan 30
+ spanning-tree portfast
+
+! ACL restricting the exam VLAN: exam PCs may only reach the exam server and DNS
+ip access-list extended ACL_EXAMS
+ permit ip 192.168.20.0 0.0.0.255 host 192.168.30.20
+ permit udp 192.168.20.0 0.0.0.255 host 192.168.30.10 eq 53
+ permit tcp 192.168.20.0 0.0.0.255 host 192.168.30.10 eq 53
+ deny ip 192.168.20.0 0.0.0.255 any
+exit
+end
+write memory

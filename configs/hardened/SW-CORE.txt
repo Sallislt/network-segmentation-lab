@@ -1,0 +1,153 @@
+! ============================================================
+! SW-CORE - Layer 3 core switch (hardened version)
+! Changes vs. original:
+!  - routed /30 uplink to R1 + default route (Internet access was impossible in the original)
+!  - DHCP relay (ip helper-address) for the client and exam VLANs
+!  - ACL_EXAMS now lets DHCP through (the original ACL blocked the DHCP broadcast)
+!  - new ACL_CAMERAS: cameras may only talk to the NVR
+!  - trunks: no DTP negotiation, unused native VLAN, pruned VLAN lists
+!  - unused ports shut down and parked in VLAN 999
+!  - management hardening: SSH v2 only, VTY restricted to the management VLAN
+! Replace every <CHANGE_ME> before use. Not yet re-tested in Packet Tracer.
+! ============================================================
+enable
+configure terminal
+hostname SW-CORE
+ip routing
+
+! --- Management hardening ---------------------------------------------
+service password-encryption
+enable secret <CHANGE_ME>
+username netadmin privilege 15 secret <CHANGE_ME>
+no ip domain-lookup
+ip domain-name lab.local
+crypto key generate rsa general-keys modulus 2048
+ip ssh version 2
+banner motd ^Authorized access only. Activity is logged.^
+
+ip access-list standard ACL_MGMT
+ permit 192.168.99.0 0.0.0.255
+ deny any log
+
+line con 0
+ login local
+ exec-timeout 10 0
+line vty 0 4
+ login local
+ transport input ssh
+ access-class ACL_MGMT in
+ exec-timeout 10 0
+line vty 5 15
+ transport input none
+
+! --- VLANs --------------------------------------------------------------
+vlan 10
+ name CUSTOMER_SERVICE
+vlan 20
+ name EXAMS
+vlan 30
+ name SERVERS
+vlan 40
+ name VOIP
+vlan 50
+ name CAMERAS
+vlan 99
+ name MANAGEMENT
+vlan 999
+ name PARKING_UNUSED
+
+! --- Gateways (SVI) -----------------------------------------------------
+interface Vlan10
+ ip address 192.168.10.1 255.255.255.0
+ ip helper-address 192.168.30.10
+ no shutdown
+
+interface Vlan20
+ ip address 192.168.20.1 255.255.255.0
+ ip helper-address 192.168.30.10
+ ip access-group ACL_EXAMS in
+ no shutdown
+
+interface Vlan30
+ ip address 192.168.30.1 255.255.255.0
+ no shutdown
+
+interface Vlan40
+ ip address 192.168.40.1 255.255.255.0
+ no shutdown
+
+interface Vlan50
+ ip address 192.168.50.1 255.255.255.0
+ ip access-group ACL_CAMERAS in
+ no shutdown
+
+interface Vlan99
+ ip address 192.168.99.1 255.255.255.0
+ no shutdown
+
+! --- Routed uplink to R1 ------------------------------------------------
+interface GigabitEthernet0/3
+ description Transit to R1-Perimeter (routed /30)
+ no switchport
+ ip address 10.0.0.2 255.255.255.252
+ no shutdown
+
+ip route 0.0.0.0 0.0.0.0 10.0.0.1
+
+! --- Trunks to access switches ----------------------------------------
+interface GigabitEthernet0/1
+ description Trunk to SW-ACC1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport nonegotiate
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,40,99
+ no shutdown
+
+interface GigabitEthernet0/2
+ description Trunk to SW-ACC2
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport nonegotiate
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,20,50,99
+ no shutdown
+
+! --- Servers (VLAN 30) --------------------------------------------------
+interface range FastEthernet0/1 - 4
+ switchport mode access
+ switchport access vlan 30
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+interface FastEthernet0/1
+ description SRV-DC (DNS, DHCP, AD)
+interface FastEthernet0/2
+ description SRV-EXAM
+interface FastEthernet0/3
+ description SRV-FILE
+interface FastEthernet0/4
+ description SRV-NVR
+
+! --- Unused ports: shut down and parked ---------------------------------
+interface range FastEthernet0/5 - 24
+ description UNUSED
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+
+! --- ACLs ---------------------------------------------------------------
+! Exam PCs: DHCP, then only the exam server and DNS. No Internet, no other VLAN.
+ip access-list extended ACL_EXAMS
+ permit udp any any eq bootps
+ permit ip 192.168.20.0 0.0.0.255 host 192.168.30.20
+ permit udp 192.168.20.0 0.0.0.255 host 192.168.30.10 eq domain
+ permit tcp 192.168.20.0 0.0.0.255 host 192.168.30.10 eq domain
+ deny ip any any log
+
+! Cameras: only the NVR (recordings and live view go through the NVR)
+ip access-list extended ACL_CAMERAS
+ permit ip 192.168.50.0 0.0.0.255 host 192.168.30.40
+ deny ip any any log
+
+end
+write memory

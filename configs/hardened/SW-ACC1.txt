@@ -1,0 +1,100 @@
+! ============================================================
+! SW-ACC1 - access switch: customer service area + VoIP (hardened version)
+! Changes vs. original:
+!  - management IP in VLAN 99, SSH v2 only
+!  - port security (sticky MAC) and BPDU guard on every access port
+!  - DHCP snooping (only the uplink is trusted: blocks rogue DHCP servers)
+!  - trunk: no DTP negotiation, unused native VLAN; unused uplink shut down
+! Replace every <CHANGE_ME> before use. Not yet re-tested in Packet Tracer.
+! ============================================================
+enable
+configure terminal
+hostname SW-ACC1
+
+! --- Management hardening ---------------------------------------------
+service password-encryption
+enable secret <CHANGE_ME>
+username netadmin privilege 15 secret <CHANGE_ME>
+no ip domain-lookup
+ip domain-name lab.local
+crypto key generate rsa general-keys modulus 2048
+ip ssh version 2
+banner motd ^Authorized access only. Activity is logged.^
+
+ip access-list standard ACL_MGMT
+ permit 192.168.99.0 0.0.0.255
+ deny any log
+
+line con 0
+ login local
+ exec-timeout 10 0
+line vty 0 4
+ login local
+ transport input ssh
+ access-class ACL_MGMT in
+ exec-timeout 10 0
+line vty 5 15
+ transport input none
+
+vlan 10
+ name CUSTOMER_SERVICE
+vlan 40
+ name VOIP
+vlan 99
+ name MANAGEMENT
+vlan 999
+ name PARKING_UNUSED
+
+interface Vlan99
+ ip address 192.168.99.11 255.255.255.0
+ no shutdown
+ip default-gateway 192.168.99.1
+
+! --- DHCP snooping -----------------------------------------------------
+ip dhcp snooping
+ip dhcp snooping vlan 10
+no ip dhcp snooping information option
+
+! --- Uplink to SW-CORE -------------------------------------------------
+interface GigabitEthernet0/1
+ description Trunk to SW-CORE
+ switchport mode trunk
+ switchport nonegotiate
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,40,99
+ ip dhcp snooping trust
+ no shutdown
+
+interface GigabitEthernet0/2
+ description UNUSED
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+
+! --- Fa0/1-12: customer service PCs (VLAN 10) ------------------------
+interface range FastEthernet0/1 - 12
+ description Customer service PC
+ switchport mode access
+ switchport access vlan 10
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security mac-address sticky
+ switchport port-security violation restrict
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ ip dhcp snooping limit rate 10
+
+! --- Fa0/13-24: IP phones (VLAN 40) -----------------------------------
+interface range FastEthernet0/13 - 24
+ description IP phone
+ switchport mode access
+ switchport access vlan 40
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security mac-address sticky
+ switchport port-security violation restrict
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+
+end
+write memory

@@ -1,0 +1,52 @@
+! ============================================================
+! SW-ACC2 - access switch: exam room + IP cameras
+! Original course configuration (Packet Tracer), comments translated to English
+! ============================================================
+enable
+configure terminal
+hostname SW-ACC2
+
+vlan 20
+ name EXAMS
+vlan 50
+ name CAMERAS
+
+! Uplink to SW-CORE
+interface GigabitEthernet0/1
+ description Uplink to SW-CORE
+ switchport mode trunk
+ switchport trunk allowed vlan 20,50,99
+ no shutdown
+
+! Exam PCs: Fa0/1-15
+interface range FastEthernet0/1 - 15
+ description Exam PC
+ switchport mode access
+ switchport access vlan 20
+ spanning-tree portfast
+
+! Exam supervisor PC: Fa0/16
+interface FastEthernet0/16
+ description Exam supervisor PC
+ switchport mode access
+ switchport access vlan 20
+ spanning-tree portfast
+
+! IP cameras: Fa0/17-24
+interface range FastEthernet0/17 - 24
+ description IP cameras
+ switchport mode access
+ switchport access vlan 50
+ spanning-tree portfast
+
+end
+write memory
+
+! ------------------------------------------------------------
+! Servers in Packet Tracer (static addressing)
+! SRV-DC   192.168.30.10/24  GW 192.168.30.1  DNS + DHCP
+!          (pool for exam PCs: 192.168.20.100-150, GW 192.168.20.1, DNS 192.168.30.10)
+! SRV-EXAM 192.168.30.20/24  GW 192.168.30.1
+! SRV-FILE 192.168.30.30/24  GW 192.168.30.1
+! SRV-NVR  192.168.30.40/24  GW 192.168.30.1
+! ------------------------------------------------------------
